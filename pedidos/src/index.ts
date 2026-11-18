@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { Worker } from "node:worker_threads";
 import { medirLatencia, resumenMetricas } from "./metricas";
+import { contarPrimosEnPool, estadoPool } from "./pool";
 
 const PORT = Number(process.env.PORT ?? 3002);
 const INVENTARIO_URL = process.env.INVENTARIO_URL ?? "http://localhost:3001";
@@ -21,7 +22,7 @@ app.use(express.json());
 app.use(medirLatencia);
 
 app.get("/metricas", (_req: Request, res: Response) => {
-    res.json(resumenMetricas());
+    res.json({ ...resumenMetricas(), pool: estadoPool() });
 });
 
 app.get("/health", (_req: Request, res: Response) => {
@@ -96,6 +97,27 @@ app.get("/reporte/worker", async (req: Request, res: Response) => {
         res.json({ modo: "worker", n, primos, ms: Math.round(performance.now() - inicio) });
     } catch (error) {
         res.status(500).json({ error: (error as Error).message });
+    }
+});
+
+// Igual que /reporte/worker, pero con un número fijo de trabajadores y una cola acotada.
+app.get("/reporte/pool", async (req: Request, res: Response) => {
+    const n = leerN(req);
+    if (n === null) {
+        res.status(400).json({ error: "n debe ser un entero entre 2 y 50000000" });
+        return;
+    }
+    const inicio = performance.now();
+    try {
+        const primos = await contarPrimosEnPool(n);
+        res.json({ modo: "pool", n, primos, ms: Math.round(performance.now() - inicio) });
+    } catch (error) {
+        const e = error as Error;
+        if (e.name === "PoolLleno") {
+            res.set("Retry-After", "1").status(503).json({ error: e.message, pool: estadoPool() });
+            return;
+        }
+        res.status(500).json({ error: e.message });
     }
 });
 
