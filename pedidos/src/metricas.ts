@@ -1,7 +1,15 @@
 // Interceptor que mide cada petición (tarea en clase).
 import { Request, Response, NextFunction } from "express";
+import { monitorEventLoopDelay } from "node:perf_hooks";
+import os from "node:os";
 
 const UMBRAL_LENTA_MS = Number(process.env.UMBRAL_LENTA_MS ?? 1000);
+
+// Mide cuánto se retrasa el bucle de eventos (lo que el interceptor no puede ver).
+const retardoBucle = monitorEventLoopDelay({ resolution: 10 });
+retardoBucle.enable();
+
+const nsAMs = (ns: number) => Math.round(ns / 1e6);
 
 interface Estadistica {
   peticiones: number;
@@ -36,6 +44,12 @@ export function resumenMetricas() {
   // TODO 4: devuelve { umbralLentaMs, rutas: [{ ruta, peticiones, promedioMs, maxMs, lentas }] }
   return {
     umbralLentaMs: UMBRAL_LENTA_MS,
+    nucleos: os.availableParallelism(),
+    bucle: {
+      p50Ms: nsAMs(retardoBucle.percentile(50)),
+      p99Ms: nsAMs(retardoBucle.percentile(99)),
+      maxMs: nsAMs(retardoBucle.max),
+    },
     rutas: [...porRuta].map(([ruta, e]) => ({
       ruta,
       peticiones: e.peticiones,
