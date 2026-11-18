@@ -1,5 +1,6 @@
 import express, { Request, Response } from "express";
 import { randomUUID } from "node:crypto";
+import { medirLatencia, resumenMetricas } from "./metricas";
 
 const PORT = Number(process.env.PORT ?? 3002);
 const INVENTARIO_URL = process.env.INVENTARIO_URL ?? "http://localhost:3001";
@@ -15,6 +16,11 @@ interface Pedido {
 const pedidos: Pedido[] = [];
 const app = express();
 app.use(express.json());
+app.use(medirLatencia);
+
+app.get("/metricas", (_req: Request, res: Response) => {
+    res.json(resumenMetricas());
+});
 
 app.get("/health", (_req: Request, res: Response) => {
     res.json({ status: "ok", servicio: "pedidos" });
